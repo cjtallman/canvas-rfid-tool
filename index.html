@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Elegoo Canvas NFC Tag Writer</title>
+<style>
+  :root {
+    --bg: #111418; --panel: #1a1f26; --panel2: #222832; --border: #2f3743;
+    --text: #e6e9ee; --muted: #8b95a5; --accent: #3ddc97; --warn: #ffb84d; --err: #ff6b6b;
+    --mono: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  main { display: grid; grid-template-columns: minmax(320px, 440px) 1fr; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin-bottom: 16px; }
+  section h2 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  .field { margin-bottom: 10px; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  input, select, textarea { width: 100%; background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; font: inherit; }
+  input[type=color] { padding: 2px; height: 36px; cursor: pointer; }
+  input[type=checkbox] { width: auto; margin-right: 6px; }
+  textarea { font-family: var(--mono); font-size: 12px; resize: vertical; }
+  .check { display: flex; align-items: center; color: var(--text); font-size: 13px; margin-bottom: 6px; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .warn { color: var(--warn); }
+  .err { color: var(--err); }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #062b1b; border-color: var(--accent); font-weight: 600; }
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .swatch { display: flex; gap: 8px; align-items: center; }
+  .swatch input[type=color] { width: 52px; flex: none; }
+  pre.out { background: #0c0f12; border: 1px solid var(--border); border-radius: 6px; padding: 10px; font-family: var(--mono); font-size: 12px; white-space: pre-wrap; word-break: break-all; margin: 0; max-height: 260px; overflow: auto; }
+  table { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 12px; }
+  th, td { text-align: left; padding: 3px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: normal; }
+  td.desc { font-family: system-ui, sans-serif; color: var(--muted); }
+  tr.filament td { color: var(--accent); }
+  tr.filament td.desc { color: var(--text); }
+  tr.skip td { opacity: .35; }
+  .results { max-height: 320px; overflow: auto; margin-top: 8px; border: 1px solid var(--border); border-radius: 6px; }
+  .results:empty { display: none; }
+  .result { display: flex; gap: 10px; align-items: center; padding: 6px 10px; cursor: pointer; border-bottom: 1px solid var(--border); }
+  .result:last-child { border-bottom: none; }
+  .result:hover { background: var(--panel2); }
+  .result .dot { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border); flex: none; }
+  .result .name { font-size: 13px; }
+  .result .meta { font-size: 11px; color: var(--muted); }
+  .preview { display: flex; gap: 12px; align-items: center; }
+  .chip { width: 46px; height: 46px; border-radius: 50%; border: 2px solid var(--border); flex: none; }
+  .summary { font-size: 13px; }
+  .summary b { font-size: 15px; }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--accent); color: #062b1b; padding: 8px 16px; border-radius: 6px; font-weight: 600; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  details[open] summary { margin-bottom: 10px; }
+  ol { padding-left: 20px; margin: 6px 0; }
+  ol li { margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Elegoo Canvas NFC Tag Writer</h1>
+  <p>Fill in your spool details to generate NTAG213 write commands for the Elegoo Canvas / Centauri Carbon 2. Runs entirely in your browser.</p>
+</header>
+
+<main>
+  <div>
+    <section>
+      <h2>Search filament database</h2>
+      <input type="search" id="dbSearch" placeholder="e.g. sunlu pla+ black, polymaker matte" spellcheck="false" autocomplete="off">
+      <div class="hint" id="dbStatus">Search 8,000+ filaments from <a href="https://github.com/Donkie/SpoolmanDB" target="_blank" rel="noopener" style="color:var(--accent)">SpoolmanDB</a> (MIT licensed). Downloads about 4.6 MB the first time you search.</div>
+      <div class="results" id="dbResults"></div>
+      <div class="hint" id="dbApplied"></div>
+    </section>
+
+    <section>
+      <h2>Filament</h2>
+      <div class="row">
+        <div class="field">
+          <label for="material">Material</label>
+          <select id="material"></select>
+        </div>
+        <div class="field">
+          <label for="subtype">Subtype</label>
+          <select id="subtype"></select>
+        </div>
+      </div>
+      <div id="subtypeNote" class="hint warn" style="margin-top:-6px;margin-bottom:8px"></div>
+
+      <div class="field">
+        <label for="colorHex">Color</label>
+        <div class="swatch">
+          <input type="color" id="colorPick" value="#ff3700">
+          <input type="text" id="colorHex" value="#FF3700" maxlength="7" spellcheck="false">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="modifier">Color modifier / finish</label>
+        <select id="modifier">
+          <option value="0">None (0x00)</option>
+          <option value="77">Matte - 'M' (0x4D)</option>
+          <option value="83">Silk - 'S' (0x53)</option>
+          <option value="84">Translucent - 'T' (0x54)</option>
+          <option value="71">Galaxy / Glitter - 'G' (0x47)</option>
+          <option value="255">0xFF (seen on some genuine Elegoo spools)</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <div class="field">
+          <label for="tempMin">Nozzle temp min (°C)</label>
+          <input type="number" id="tempMin" min="0" max="500" value="190">
+        </div>
+        <div class="field">
+          <label for="tempMax">Nozzle temp max (°C)</label>
+          <input type="number" id="tempMax" min="0" max="500" value="230">
+        </div>
+      </div>
+
+      <div class="row3">
+        <div class="field">
+          <label for="diameter">Diameter (mm)</label>
+          <input type="number" id="diameter" step="0.01" min="0" value="1.75">
+        </div>
+        <div class="field">
+          <label for="weight">Weight (g)</label>
+          <input type="number" id="weight" min="0" max="65535" value="1000">
+        </div>
+        <div class="field">
+          <label for="prodDate">Prod. date</label>
+          <input type="month" id="prodDate">
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <details>
+        <summary>Advanced</summary>
+        <div class="field">
+          <label class="check"><input type="checkbox" id="includeUrl" checked>Include NDEF URL (pages 4–9)</label>
+          <input type="text" id="url" value="https://elegoo.com" spellcheck="false">
+          <div class="hint">Only phones use this. The printer ignores it. You could point it at the product page. Max ~35 characters after the prefix.</div>
+          <div id="urlErr" class="hint err"></div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="filamentCode">Filament code (hex, 16-bit)</label>
+            <input type="text" id="filamentCode" value="0001" maxlength="4" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="page22">Page 22 raw (unknown, maybe bed temps)</label>
+            <input type="text" id="page22" value="00000000" maxlength="8" spellcheck="false">
+          </div>
+        </div>
+        <div class="field">
+          <label for="page24">Page 24 override (hex, 8 chars, blank = production date)</label>
+          <input type="text" id="page24" value="" maxlength="8" placeholder="e.g. 0036C800" spellcheck="false">
+        </div>
+        <div class="field">
+          <label class="check"><input type="checkbox" id="clearTail">Zero pages 25–39 too (clears leftovers when rewriting a used tag)</label>
+          <label class="check"><input type="checkbox" id="skipZero">Skip all-zero pages (fewer commands, faster write on a blank tag)</label>
+        </div>
+      </details>
+    </section>
+
+    <section>
+      <h2>Saved presets</h2>
+      <div class="row">
+        <div class="field">
+          <label for="presetName">Name</label>
+          <input type="text" id="presetName" placeholder="e.g. Sunlu PLA+ Black">
+        </div>
+        <div class="field">
+          <label for="presetList">Load</label>
+          <select id="presetList"><option value="">—</option></select>
+        </div>
+      </div>
+      <div class="btns">
+        <button id="savePreset">Save</button>
+        <button id="deletePreset">Delete selected</button>
+        <button id="exportPresets">Export JSON</button>
+        <button id="importPresetsBtn">Import JSON</button>
+        <input type="file" id="importPresetsFile" accept=".json,application/json" hidden>
+      </div>
+    </section>
+
+    <section>
+      <h2>Decode an existing tag</h2>
+      <textarea id="importText" rows="4" placeholder="Paste A2:xx:xxxxxxxx commands, or a hex dump starting at page 0"></textarea>
+      <div class="btns">
+        <button id="decodeBtn">Decode into form</button>
+        <button id="loadBinBtn">Load .bin</button>
+        <input type="file" id="binFile" accept=".bin,application/octet-stream" hidden>
+      </div>
+      <div id="decodeMsg" class="hint"></div>
+    </section>
+  </div>
+
+  <div>
+    <section>
+      <div class="preview">
+        <div class="chip" id="chip"></div>
+        <div class="summary" id="summary"></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>NFC Tools commands</h2>
+      <pre class="out" id="cmdOut"></pre>
+      <div class="btns">
+        <button class="primary" id="copyCmds">Copy commands</button>
+        <button id="copyCmdsLines">Copy (one per line)</button>
+        <button id="downloadBin">Download .bin</button>
+        <button id="copyHex">Copy raw hex (180 B)</button>
+      </div>
+      <div class="hint" id="cmdCount"></div>
+      <ol class="hint">
+        <li>Open <b>NFC Tools</b> (iOS or Android) → <b>Other</b> → <b>Advanced NFC commands</b>. Don't use "Write".</li>
+        <li>Paste into the <b>Data</b> field and tap send/search.</li>
+        <li>Hold a blank <b>NTAG213</b> (or 215/216) sticker to the phone until you see the checkmark.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Page map</h2>
+      <table>
+        <thead><tr><th>Page</th><th>Hex</th><th>Bytes</th><th>Contents</th></tr></thead>
+        <tbody id="pageTable"></tbody>
+      </table>
+    </section>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ---------- Format definitions ----------
+// Layout: https://github.com/DnG-Crafts/ELG-RFID (verified against a real Elegoo spool)
+// Codes:  https://github.com/Savion/elegoo-rfid-editor (src/lib/materials.ts)
+
+const MATERIALS = {
+  PLA:  { code: 0x00807665, family: 0x00, temps: [190, 230] },
+  PETG: { code: 0x80698471, family: 0x01, temps: [230, 260] },
+  ABS:  { code: 0x00656683, family: 0x02, temps: [240, 270] },
+  TPU:  { code: 0x00848085, family: 0x03, temps: [210, 240] },
+  PA:   { code: 0x00008065, family: 0x04, temps: [260, 290] },
+  CPE:  { code: 0x00678069, family: 0x05, temps: [240, 270] },
+  PC:   { code: 0x00008067, family: 0x06, temps: [260, 290] },
+  PVA:  { code: 0x00808665, family: 0x07, temps: [190, 220] },
+  ASA:  { code: 0x00658365, family: 0x08, temps: [240, 270] },
+  BVOH: { code: 0x42564F48, family: 0x09, temps: [190, 220] },
+  EVA:  { code: 0x00455641, family: 0x0A, temps: [190, 220] },
+  HIPS: { code: 0x48495053, family: 0x0B, temps: [230, 250] },
+  PP:   { code: 0x00005050, family: 0x0C, temps: [220, 250] },
+  PPA:  { code: 0x00505041, family: 0x0D, temps: [280, 310] },
+  PPS:  { code: 0x00505053, family: 0x0E, temps: [300, 330] },
+};
+
+// [code, name, hiddenOnCC2]
+const SUBTYPES = [
+  [0x0000, 'PLA'], [0x0001, 'PLA+'], [0x0002, 'PLA Pro'], [0x0003, 'PLA Silk'],
+  [0x0004, 'PLA-CF'], [0x0005, 'PLA Carbon', true], [0x0006, 'PLA Matte'], [0x0007, 'PLA Fluo'],
+  [0x0008, 'PLA Wood'], [0x0009, 'PLA Basic'], [0x000A, 'RAPID PLA+'], [0x000B, 'PLA Marble'],
+  [0x000C, 'PLA Galaxy'], [0x000D, 'PLA Red Copper'], [0x000E, 'PLA Sparkle', true],
+  [0x0100, 'PETG'], [0x0101, 'PETG-CF'], [0x0102, 'PETG-GF'], [0x0103, 'PETG Pro', true],
+  [0x0104, 'PETG Translucent'], [0x0105, 'RAPID PETG'],
+  [0x0200, 'ABS'], [0x0201, 'ABS-GF', true],
+  [0x0300, 'TPU'], [0x0301, 'TPU 95A'], [0x0302, 'RAPID TPU 95A'],
+  [0x0400, 'PA'], [0x0401, 'PA-CF', true], [0x0403, 'PAHT-CF'], [0x0404, 'PA6', true],
+  [0x0405, 'PA6-CF', true], [0x0406, 'PA12', true], [0x0407, 'PA12-CF', true],
+  [0x0500, 'CPE'],
+  [0x0600, 'PC'], [0x0601, 'PCTG', true], [0x0602, 'PC-FR'],
+  [0x0700, 'PVA'], [0x0800, 'ASA'], [0x0900, 'BVOH'], [0x0A00, 'EVA'], [0x0B00, 'HIPS'],
+  [0x0C00, 'PP'], [0x0C01, 'PP-CF', true], [0x0C02, 'PP-GF', true],
+  [0x0D00, 'PPA'], [0x0D01, 'PPA-CF', true], [0x0D02, 'PPA-GF', true],
+  [0x0E00, 'PPS'], [0x0E02, 'PPS-CF', true],
+];
+
+// Suggested finish byte when picking a subtype (matches AnySpool's catalog)
+const SUBTYPE_MODIFIER = { 'PLA Silk': 83, 'PLA Matte': 77, 'PLA Galaxy': 71, 'PETG Translucent': 84 };
+
+const URI_PREFIXES = [
+  ['https://www.', 0x02], ['http://www.', 0x01], ['https://', 0x04], ['http://', 0x03],
+];
+
+const TAG_BYTES = 180; // 45 pages x 4 bytes (NTAG213)
+
+// ---------- Helpers ----------
+const $ = (id) => document.getElementById(id);
+const hex2 = (b) => b.toString(16).toUpperCase().padStart(2, '0');
+const toHex = (bytes) => Array.from(bytes, hex2).join('');
+const put16 = (buf, off, v) => { buf[off] = (v >>> 8) & 0xFF; buf[off + 1] = v & 0xFF; };
+const put32 = (buf, off, v) => { buf[off] = (v >>> 24) & 0xFF; buf[off + 1] = (v >>> 16) & 0xFF; buf[off + 2] = (v >>> 8) & 0xFF; buf[off + 3] = v & 0xFF; };
+const get16 = (buf, off) => (buf[off] << 8) | buf[off + 1];
+const get32 = (buf, off) => ((buf[off] << 24) | (buf[off + 1] << 16) | (buf[off + 2] << 8) | buf[off + 3]) >>> 0;
+const bcd = (n) => ((Math.floor(n / 10) % 10) << 4) | (n % 10);
+const unbcd = (b) => (b >> 4) * 10 + (b & 0x0F);
+const isHex = (s, len) => new RegExp(`^[0-9a-fA-F]{${len}}$`).test(s);
+const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(v) || 0)));
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 1800);
+}
+
+async function copy(text, msg) {
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); ta.remove();
+  }
+  toast(msg || 'Copied!');
+}
+
+// ---------- Form <-> state ----------
+function populateMaterials() {
+  $('material').innerHTML = Object.keys(MATERIALS).map((m) => `<option>${m}</option>`).join('');
+}
+
+function populateSubtypes(material, keep) {
+  const fam = MATERIALS[material].family;
+  const list = SUBTYPES.filter(([code]) => (code >> 8) === fam);
+  $('subtype').innerHTML = list
+    .map(([code, name, hidden]) => `<option value="${code}">${name}${hidden ? ' *' : ''}</option>`)
+    .join('');
+  if (keep !== undefined && list.some(([c]) => c === keep)) $('subtype').value = String(keep);
+  updateSubtypeNote();
+}
+
+function updateSubtypeNote() {
+  const code = Number($('subtype').value);
+  const st = SUBTYPES.find(([c]) => c === code);
+  $('subtypeNote').textContent = st && st[2]
+    ? '* Reported as not shown on the CC2 screen. The printer may display only the base material.'
+    : '';
+}
+
+function readForm() {
+  return {
+    material: $('material').value,
+    subtype: Number($('subtype').value),
+    color: $('colorHex').value.toUpperCase(),
+    modifier: Number($('modifier').value),
+    tempMin: clampInt($('tempMin').value, 0, 65535),
+    tempMax: clampInt($('tempMax').value, 0, 65535),
+    diameter: Number($('diameter').value) || 0,
+    weight: clampInt($('weight').value, 0, 65535),
+    prodDate: $('prodDate').value,
+    includeUrl: $('includeUrl').checked,
+    url: $('url').value.trim(),
+    filamentCode: $('filamentCode').value.trim(),
+    page22: $('page22').value.trim(),
+    page24: $('page24').value.trim(),
+    clearTail: $('clearTail').checked,
+    skipZero: $('skipZero').checked,
+  };
+}
+
+function writeForm(s) {
+  if (s.material && MATERIALS[s.material]) $('material').value = s.material;
+  populateSubtypes($('material').value, s.subtype);
+  if (s.color) setColor(s.color);
+  if (s.modifier !== undefined) {
+    const opt = [...$('modifier').options].some((o) => Number(o.value) === s.modifier);
+    if (!opt) $('modifier').insertAdjacentHTML('beforeend', `<option value="${s.modifier}">Custom 0x${hex2(s.modifier)}</option>`);
+    $('modifier').value = String(s.modifier);
+  }
+  for (const k of ['tempMin', 'tempMax', 'diameter', 'weight', 'prodDate', 'url', 'filamentCode', 'page22', 'page24']) {
+    if (s[k] !== undefined) $(k).value = s[k];
+  }
+  for (const k of ['includeUrl', 'clearTail', 'skipZero']) {
+    if (s[k] !== undefined) $(k).checked = s[k];
+  }
+  render();
+}
+
+function setColor(hex) {
+  hex = hex.startsWith('#') ? hex : '#' + hex;
+  if (!isHex(hex.slice(1), 6)) return;
+  $('colorHex').value = hex.toUpperCase();
+  $('colorPick').value = hex.toLowerCase();
+}
+
+// ---------- Encoding ----------
+function encodeUrl(url) {
+  let prefix = 0x00, rest = url;
+  for (const [p, code] of URI_PREFIXES) {
+    if (url.toLowerCase().startsWith(p)) { prefix = code; rest = url.slice(p.length); break; }
+  }
+  const body = new TextEncoder().encode(rest);
+  const payloadLen = 1 + body.length;
+  const ndefLen = 4 + payloadLen; // D1 01 <len> 55 + payload
+  // Lock Control TLV (5) + NDEF TLV header (2) + message + terminator (1) must fit pages 4-15 (48 bytes)
+  if (5 + 2 + ndefLen + 1 > 48) return { error: `URL too long by ${5 + 2 + ndefLen + 1 - 48} byte(s).` };
+  return {
+    bytes: [0x01, 0x03, 0xA0, 0x0C, 0x34, 0x03, ndefLen, 0xD1, 0x01, payloadLen, 0x55, prefix, ...body, 0xFE],
+  };
+}
+
+function buildTag(s) {
+  const buf = new Uint8Array(TAG_BYTES);
+  const warnings = [];
+
+  // Pages 0-3 (UID / lock / CC) are factory set and never written. Filled only for the .bin export.
+  const uid = new Uint8Array(7); crypto.getRandomValues(uid); uid[0] = 0x04;
+  buf.set([uid[0], uid[1], uid[2], 0x88 ^ uid[0] ^ uid[1] ^ uid[2]], 0);
+  buf.set([uid[3], uid[4], uid[5], uid[6]], 4);
+  buf[8] = uid[3] ^ uid[4] ^ uid[5] ^ uid[6];
+  buf[9] = 0x48;
+  buf.set([0xE1, 0x10, 0x12, 0x00], 12);
+
+  // Pages 4-15: NDEF URI (phones only)
+  $('urlErr').textContent = '';
+  if (s.includeUrl && s.url) {
+    const enc = encodeUrl(s.url);
+    if (enc.error) { $('urlErr').textContent = enc.error; warnings.push('URL skipped: ' + enc.error); }
+    else buf.set(enc.bytes, 16);
+  } else {
+    buf.set([0x03, 0x00, 0xFE], 16); // empty NDEF message
+  }
+
+  // Page 16-17: header + manufacturer + filament code
+  buf[64] = 0x36;
+  buf.set([0xEE, 0xEE, 0xEE, 0xEE], 65);
+  if (!isHex(s.filamentCode, 4)) warnings.push('Filament code must be 4 hex digits; using 0001.');
+  put16(buf, 69, isHex(s.filamentCode, 4) ? parseInt(s.filamentCode, 16) : 1);
+
+  // Page 18: material
+  put32(buf, 72, MATERIALS[s.material].code);
+
+  // Page 19: subtype
+  put16(buf, 76, s.subtype);
+
+  // Page 20: RGB + modifier
+  const rgb = isHex(s.color.replace('#', ''), 6) ? s.color.replace('#', '') : '000000';
+  if (rgb === '000000' && s.color.replace('#', '') !== '000000') warnings.push('Invalid color hex; using #000000.');
+  buf[80] = parseInt(rgb.slice(0, 2), 16);
+  buf[81] = parseInt(rgb.slice(2, 4), 16);
+  buf[82] = parseInt(rgb.slice(4, 6), 16);
+  buf[83] = s.modifier & 0xFF;
+
+  // Page 21: nozzle temps
+  put16(buf, 84, s.tempMin);
+  put16(buf, 86, s.tempMax);
+  if (s.tempMin > s.tempMax) warnings.push('Min temp is higher than max temp.');
+
+  // Page 22: unknown
+  if (s.page22 && !isHex(s.page22, 8)) warnings.push('Page 22 must be 8 hex digits; using zeros.');
+  else if (s.page22) buf.set(hexToBytes(s.page22), 88);
+
+  // Page 23: diameter (1/100 mm) + weight (g)
+  put16(buf, 92, Math.round(s.diameter * 100));
+  put16(buf, 94, s.weight);
+
+  // Page 24: production date (BCD YY MM) or override
+  if (s.page24) {
+    if (isHex(s.page24, 8)) buf.set(hexToBytes(s.page24), 96);
+    else warnings.push('Page 24 override must be 8 hex digits; using production date.');
+  }
+  if (!s.page24 || !isHex(s.page24, 8)) {
+    const [y, m] = (s.prodDate || '').split('-').map(Number);
+    const d = new Date();
+    buf[96] = bcd((y || d.getFullYear()) % 100);
+    buf[97] = bcd(m || d.getMonth() + 1);
+  }
+
+  // Pages 40-44: dynamic lock / config (factory defaults, .bin only)
+  buf.set([0x00, 0x00, 0x00, 0xBD], 160);
+  buf.set([0x04, 0x00, 0x00, 0xFF], 164);
+  buf.set([0x00, 0x05, 0x00, 0x00], 168);
+
+  return { buf, warnings };
+}
+
+function hexToBytes(h) {
+  const out = [];
+  for (let i = 0; i < h.length; i += 2) out.push(parseInt(h.slice(i, i + 2), 16));
+  return out;
+}
+
+function pagesToWrite(buf, s) {
+  const last = s.clearTail ? 39 : 24;
+  const pages = [];
+  for (let p = 4; p <= last; p++) {
+    const bytes = buf.slice(p * 4, p * 4 + 4);
+    if (s.skipZero && bytes.every((b) => b === 0)) continue;
+    pages.push(p);
+  }
+  return pages;
+}
+
+function commandsFor(buf, pages) {
+  return pages.map((p) => `A2:${hex2(p)}:${toHex(buf.slice(p * 4, p * 4 + 4))}`);
+}
+
+// ---------- Rendering ----------
+const PAGE_DESC = {
+  0: 'UID 0-2 + BCC0', 1: 'UID 3-6', 2: 'BCC1 / internal / lock bytes', 3: 'Capability container',
+  4: 'NDEF: lock control TLV', 5: 'NDEF: message TLV', 6: 'NDEF: URI record', 7: 'NDEF: URI', 8: 'NDEF: URI', 9: 'NDEF: URI',
+  16: 'Header 0x36 + manufacturer EE EE EE', 17: 'Manufacturer EE + filament code', 18: 'Material',
+  19: 'Subtype', 20: 'Color RGB + modifier', 21: 'Nozzle temp min / max', 22: 'Unknown (bed temps?)',
+  23: 'Diameter / weight', 24: 'Production date (YYMM BCD)',
+  40: 'Dynamic lock bytes', 41: 'CFG0 (mirror / AUTH0)', 42: 'CFG1 (ACCESS)', 43: 'PWD', 44: 'PACK',
+};
+
+let current = null;
+
+function render() {
+  const s = readForm();
+  const { buf, warnings } = buildTag(s);
+  const pages = pagesToWrite(buf, s);
+  const cmds = commandsFor(buf, pages);
+  current = { s, buf, pages, cmds };
+
+  $('cmdOut').textContent = cmds.join(',');
+  $('cmdCount').innerHTML = `${cmds.length} commands · pages ${pages[0]}–${pages[pages.length - 1]}` +
+    (warnings.length ? `<br><span class="warn">${warnings.join('<br>')}</span>` : '');
+
+  const subName = (SUBTYPES.find(([c]) => c === s.subtype) || [0, '?'])[1];
+  const rgb = '#' + toHex(buf.slice(80, 83));
+  $('chip').style.background = rgb;
+  const mod = s.modifier ? ` · finish '${s.modifier >= 32 && s.modifier < 127 ? String.fromCharCode(s.modifier) : '0x' + hex2(s.modifier)}'` : '';
+  $('summary').innerHTML = `<b>${subName}</b> <span style="color:var(--muted)">(${s.material})</span><br>` +
+    `${rgb}${mod} · ${s.tempMin}–${s.tempMax} °C · ${s.diameter} mm · ${s.weight} g`;
+
+  const written = new Set(pages);
+  let rows = '';
+  for (let p = 0; p < 45; p++) {
+    const bytes = buf.slice(p * 4, p * 4 + 4);
+    if (p >= 10 && p <= 15 && !written.has(p)) continue;
+    if (p >= 25 && p <= 39 && !written.has(p)) { if (p === 25) rows += `<tr class="skip"><td>25–39</td><td></td><td></td><td class="desc">unused</td></tr>`; continue; }
+    const cls = p >= 16 && p <= 24 ? 'filament' : written.has(p) ? '' : 'skip';
+    const desc = PAGE_DESC[p] || (p <= 15 ? 'NDEF: padding' : 'unused');
+    rows += `<tr class="${cls}"><td>${p}</td><td>0x${hex2(p)}</td><td>${Array.from(bytes, hex2).join(' ')}</td><td class="desc">${desc}${written.has(p) ? '' : ' (not written)'}</td></tr>`;
+  }
+  $('pageTable').innerHTML = rows;
+}
+
+// ---------- Decoding ----------
+function parseInput(text) {
+  const buf = new Uint8Array(TAG_BYTES);
+  const cmdRe = /A2[\s:]*([0-9a-f]{2})[\s:]*((?:[0-9a-f]{2}[\s:]*){4})/gi;
+  let m, found = 0;
+  while ((m = cmdRe.exec(text))) {
+    const page = parseInt(m[1], 16);
+    if (page < 45) { buf.set(hexToBytes(m[2].replace(/[\s:]/g, '')), page * 4); found++; }
+  }
+  if (found) return { buf, how: `${found} A2 commands` };
+  const hex = text.replace(/0x/gi, '').replace(/[^0-9a-f]/gi, '');
+  if (hex.length >= 100 * 2 && hex.length % 2 === 0) {
+    buf.set(hexToBytes(hex).slice(0, TAG_BYTES));
+    return { buf, how: `${hex.length / 2} bytes of hex` };
+  }
+  return null;
+}
+
+function decodeTag(buf) {
+  if (buf[64] !== 0x36) throw new Error(`Page 16 header is 0x${hex2(buf[64])}, expected 0x36. Is this an Elegoo tag?`);
+  const matCode = get32(buf, 72);
+  const material = Object.keys(MATERIALS).find((k) => MATERIALS[k].code === matCode);
+  const notes = [];
+  if (!material) notes.push(`Unknown material code 0x${matCode.toString(16).padStart(8, '0')}`);
+  const subtype = get16(buf, 76);
+  if (!SUBTYPES.some(([c]) => c === subtype)) notes.push(`Unknown subtype 0x${subtype.toString(16).padStart(4, '0')}`);
+
+  // NDEF URL (best effort)
+  let url, includeUrl = false;
+  if (buf[20] === 0x03 && buf[23] === 0xD1 && buf[26] === 0x55) {
+    const plen = buf[25];
+    const prefix = (URI_PREFIXES.find(([, c]) => c === buf[27]) || [''])[0];
+    url = prefix + new TextDecoder().decode(buf.slice(28, 28 + plen - 1));
+    includeUrl = true;
+  }
+
+  const yy = unbcd(buf[96]), mm = unbcd(buf[97]);
+  const dateValid = mm >= 1 && mm <= 12 && buf[98] === 0 && buf[99] === 0;
+
+  return {
+    notes,
+    state: {
+      material: material || 'PLA',
+      subtype,
+      color: '#' + toHex(buf.slice(80, 83)),
+      modifier: buf[83],
+      tempMin: get16(buf, 84),
+      tempMax: get16(buf, 86),
+      diameter: get16(buf, 92) / 100,
+      weight: get16(buf, 94),
+      prodDate: dateValid ? `20${String(yy).padStart(2, '0')}-${String(mm).padStart(2, '0')}` : '',
+      page24: dateValid ? '' : toHex(buf.slice(96, 100)),
+      filamentCode: toHex(buf.slice(69, 71)),
+      page22: toHex(buf.slice(88, 92)),
+      includeUrl,
+      ...(url ? { url } : {}),
+    },
+  };
+}
+
+function loadFromBuffer(buf, how) {
+  try {
+    const { state, notes } = decodeTag(buf);
+    writeForm(state);
+    $('decodeMsg').innerHTML = `Decoded from ${how}.` + (notes.length ? `<br><span class="warn">${notes.join('<br>')}</span>` : '');
+    $('decodeMsg').className = 'hint';
+  } catch (e) {
+    $('decodeMsg').textContent = e.message;
+    $('decodeMsg').className = 'hint err';
+  }
+}
+
+// ---------- Presets ----------
+const PRESET_KEY = 'elegooNfcPresets';
+const loadPresets = () => { try { return JSON.parse(localStorage.getItem(PRESET_KEY)) || {}; } catch { return {}; } };
+const storePresets = (p) => localStorage.setItem(PRESET_KEY, JSON.stringify(p));
+
+function refreshPresetList(select) {
+  const presets = loadPresets();
+  $('presetList').innerHTML = '<option value="">—</option>' +
+    Object.keys(presets).sort().map((n) => `<option>${n.replace(/</g, '&lt;')}</option>`).join('');
+  if (select) $('presetList').value = select;
+}
+
+// ---------- Filament database (SpoolmanDB) ----------
+const DB_URL = 'https://donkie.github.io/SpoolmanDB/filaments.json';
+let db = null, dbLoading = null;
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function loadDb() {
+  if (db) return Promise.resolve(db);
+  if (dbLoading) return dbLoading;
+  $('dbStatus').textContent = 'Loading filament database…';
+  dbLoading = fetch(DB_URL)
+    .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+    .then((list) => {
+      db = list.map((f) => ({ ...f, _hay: `${f.manufacturer} ${f.material} ${f.name}`.toLowerCase() }));
+      $('dbStatus').textContent = `${db.length.toLocaleString()} filaments loaded from SpoolmanDB.`;
+      return db;
+    })
+    .catch((e) => {
+      dbLoading = null;
+      $('dbStatus').innerHTML = `<span class="err">Couldn't load the database (${esc(e.message)}). Are you online?</span>`;
+      throw e;
+    });
+  return dbLoading;
+}
+
+function subtypeCode(name) {
+  return (SUBTYPES.find(([, n]) => n === name) || [])[0];
+}
+
+// Map a SpoolmanDB entry onto the closest Elegoo material/subtype/finish.
+function mapFilament(f) {
+  const mat = (f.material || '').toUpperCase().replace(/\s+/g, '');
+  const text = `${f.material} ${f.name}`.toLowerCase();
+  const has = (re) => re.test(text);
+  const notes = [];
+  let material, subtype;
+
+  if (/^PCTG/.test(mat)) { material = 'PC'; subtype = 'PCTG'; }
+  else if (/^(PETG|PET|HTPET)/.test(mat)) {
+    material = 'PETG';
+    subtype = /CF/.test(mat) ? 'PETG-CF' : /GF/.test(mat) ? 'PETG-GF'
+      : (f.translucent || has(/translucent|transparent|clear/)) ? 'PETG Translucent' : 'PETG';
+  }
+  else if (/^(PC\+ABS|PCABS|PCPBT|PC)/.test(mat)) { material = 'PC'; subtype = /FR/.test(mat) ? 'PC-FR' : 'PC'; }
+  else if (/^(EASY)?ASA/.test(mat)) { material = 'ASA'; subtype = 'ASA'; }
+  else if (/^ABS/.test(mat)) { material = 'ABS'; subtype = /GF/.test(mat) ? 'ABS-GF' : 'ABS'; }
+  else if (/^(TPU|TPE|TPC)/.test(mat)) { material = 'TPU'; subtype = /95A/.test(mat) || has(/95a/) ? 'TPU 95A' : 'TPU'; }
+  else if (/^PAHT/.test(mat)) { material = 'PA'; subtype = 'PAHT-CF'; }
+  else if (/^PA(\d+)?(-|$)/.test(mat) || /^PA\d/.test(mat)) {
+    material = 'PA';
+    const exact = mat.replace(/-?GF.*$/, '');
+    subtype = subtypeCode(exact) !== undefined ? exact : /CF/.test(mat) ? 'PA-CF' : 'PA';
+  }
+  else if (/^PPS/.test(mat)) { material = 'PPS'; subtype = /CF/.test(mat) ? 'PPS-CF' : 'PPS'; }
+  else if (/^PPA/.test(mat)) { material = 'PPA'; subtype = /CF/.test(mat) ? 'PPA-CF' : /GF/.test(mat) ? 'PPA-GF' : 'PPA'; }
+  else if (/^PP/.test(mat)) { material = 'PP'; subtype = /CF/.test(mat) ? 'PP-CF' : /GF/.test(mat) ? 'PP-GF' : 'PP'; }
+  else if (/^PVA/.test(mat)) { material = 'PVA'; subtype = 'PVA'; }
+  else if (/^BVOH/.test(mat)) { material = 'BVOH'; subtype = 'BVOH'; }
+  else if (/^HIPS/.test(mat)) { material = 'HIPS'; subtype = 'HIPS'; }
+  else if (/^CPE/.test(mat)) { material = 'CPE'; subtype = 'CPE'; }
+  else if (/^EVA/.test(mat)) { material = 'EVA'; subtype = 'EVA'; }
+  else {
+    material = 'PLA';
+    if (!/^(HT)?PLA/.test(mat) && mat !== 'WOOD') notes.push(`"${f.material}" has no Elegoo equivalent, so it's mapped to PLA. Check the subtype.`);
+    if (/CF/.test(mat)) subtype = 'PLA-CF';
+    else if (/WOOD/.test(mat) || has(/\bwood\b/)) subtype = 'PLA Wood';
+    else if (has(/silk/)) subtype = 'PLA Silk';
+    else if (f.finish === 'matte' || has(/matte?\b/)) subtype = 'PLA Matte';
+    else if (f.pattern === 'marble' || has(/marble/)) subtype = 'PLA Marble';
+    else if (f.pattern === 'sparkle' || has(/galaxy|sparkle|glitter/)) subtype = 'PLA Galaxy';
+    else if (f.glow || has(/glow|fluo|neon/)) subtype = 'PLA Fluo';
+    else if (has(/\bpro\b/)) subtype = 'PLA Pro';
+    else if (/\+/.test(mat)) subtype = 'PLA+';
+    else subtype = 'PLA';
+  }
+
+  let modifier = SUBTYPE_MODIFIER[subtype] || 0;
+  if (!modifier) {
+    if (f.finish === 'matte') modifier = 77;
+    else if (has(/silk/)) modifier = 83;
+    else if (f.translucent) modifier = 84;
+    else if (f.pattern === 'sparkle') modifier = 71;
+  }
+
+  const def = MATERIALS[material].temps;
+  let temps;
+  if (Array.isArray(f.extruder_temp_range)) temps = f.extruder_temp_range;
+  else if (f.extruder_temp) {
+    temps = [f.extruder_temp - 10, f.extruder_temp + 10];
+    notes.push(`The database only lists one nozzle temp (${f.extruder_temp} °C), so the range is set to ±10 °C.`);
+  } else {
+    temps = def;
+    notes.push(`No nozzle temp in the database, so ${material} defaults are used.`);
+  }
+
+  const color = f.color_hex || (f.color_hexes && f.color_hexes[0]) || '000000';
+  if (f.color_hexes && f.color_hexes.length > 1) notes.push(`Multi-color filament. Only the first color (#${color}) can be stored on the tag.`);
+  if (f.diameter && Math.abs(f.diameter - 1.75) > 0.01) notes.push(`${f.diameter} mm filament. The Canvas is built for 1.75 mm.`);
+  if (SUBTYPES.find(([, n]) => n === subtype)?.[2]) notes.push(`${subtype} is reported as not showing on the CC2 screen.`);
+
+  return {
+    state: {
+      material,
+      subtype: subtypeCode(subtype),
+      color: '#' + color.toUpperCase(),
+      modifier,
+      tempMin: temps[0],
+      tempMax: temps[1],
+      diameter: f.diameter || 1.75,
+      weight: f.weight || 1000,
+    },
+    subtypeName: subtype,
+    notes,
+  };
+}
+
+function tempLabel(f) {
+  if (Array.isArray(f.extruder_temp_range)) return `${f.extruder_temp_range[0]}–${f.extruder_temp_range[1]} °C`;
+  if (f.extruder_temp) return `${f.extruder_temp} °C`;
+  return 'no temp';
+}
+
+let dbMatches = [];
+function runSearch() {
+  const q = $('dbSearch').value.trim().toLowerCase();
+  if (!q) { $('dbResults').innerHTML = ''; return; }
+  loadDb().then((list) => {
+    if ($('dbSearch').value.trim().toLowerCase() !== q) return;
+    const tokens = q.split(/\s+/);
+    dbMatches = list.filter((f) => tokens.every((t) => f._hay.includes(t)));
+    const shown = dbMatches.slice(0, 100);
+    $('dbResults').innerHTML = shown.map((f, i) => {
+      const hexes = f.color_hexes && f.color_hexes.length > 1 ? f.color_hexes : null;
+      const bg = hexes ? `linear-gradient(135deg, ${hexes.map((h) => '#' + h).join(',')})` : '#' + (f.color_hex || '000000');
+      return `<div class="result" data-i="${i}">
+        <div class="dot" style="background:${esc(bg)}"></div>
+        <div><div class="name">${esc(f.manufacturer)} · ${esc(f.material)} · ${esc(f.name)}</div>
+        <div class="meta">${tempLabel(f)} · ${f.weight || '?'} g · ${f.diameter} mm${f.finish ? ' · ' + esc(f.finish) : ''}</div></div>
+      </div>`;
+    }).join('');
+    $('dbStatus').textContent = dbMatches.length > shown.length
+      ? `${dbMatches.length.toLocaleString()} matches. Showing the first ${shown.length}; add words to narrow it down.`
+      : `${dbMatches.length.toLocaleString()} match${dbMatches.length === 1 ? '' : 'es'}.`;
+  }).catch(() => {});
+}
+
+function applyFilament(f) {
+  const { state, subtypeName, notes } = mapFilament(f);
+  writeForm(state);
+  $('presetName').value = `${f.manufacturer} ${f.material} ${f.name}`;
+  $('dbApplied').innerHTML = `Applied <b>${esc(f.manufacturer)} ${esc(f.material)} ${esc(f.name)}</b> as <b>${esc(subtypeName)}</b>.` +
+    (notes.length ? `<br><span class="warn">${notes.map(esc).join('<br>')}</span>` : '');
+}
+
+// ---------- Wiring ----------
+function init() {
+  populateMaterials();
+  populateSubtypes('PLA');
+  const now = new Date();
+  $('prodDate').value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+  $('material').addEventListener('change', () => {
+    const m = MATERIALS[$('material').value];
+    populateSubtypes($('material').value);
+    $('tempMin').value = m.temps[0];
+    $('tempMax').value = m.temps[1];
+    $('modifier').value = '0';
+    render();
+  });
+  $('subtype').addEventListener('change', () => {
+    const name = (SUBTYPES.find(([c]) => c === Number($('subtype').value)) || [])[1];
+    $('modifier').value = String(SUBTYPE_MODIFIER[name] || 0);
+    updateSubtypeNote();
+    render();
+  });
+  $('colorPick').addEventListener('input', () => { $('colorHex').value = $('colorPick').value.toUpperCase(); render(); });
+  $('colorHex').addEventListener('input', () => {
+    let v = $('colorHex').value.trim();
+    if (!v.startsWith('#')) v = '#' + v;
+    if (isHex(v.slice(1), 6)) $('colorPick').value = v.toLowerCase();
+    render();
+  });
+  for (const id of ['modifier', 'tempMin', 'tempMax', 'diameter', 'weight', 'prodDate', 'includeUrl', 'url', 'filamentCode', 'page22', 'page24', 'clearTail', 'skipZero']) {
+    $(id).addEventListener('input', render);
+    $(id).addEventListener('change', render);
+  }
+
+  $('copyCmds').onclick = () => copy(current.cmds.join(','), `Copied ${current.cmds.length} commands`);
+  $('copyCmdsLines').onclick = () => copy(current.cmds.join('\n'), `Copied ${current.cmds.length} commands`);
+  $('copyHex').onclick = () => copy(toHex(current.buf), 'Copied 180 bytes hex');
+  $('downloadBin').onclick = () => {
+    const subName = ((SUBTYPES.find(([c]) => c === current.s.subtype) || [])[1] || 'tag').replace(/[^\w+-]+/g, '_');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([current.buf], { type: 'application/octet-stream' }));
+    a.download = `elegoo_${subName}_${current.s.color.replace('#', '')}.bin`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+
+  $('decodeBtn').onclick = () => {
+    const parsed = parseInput($('importText').value);
+    if (!parsed) { $('decodeMsg').textContent = 'No A2 commands or hex dump (≥100 bytes) found.'; $('decodeMsg').className = 'hint err'; return; }
+    loadFromBuffer(parsed.buf, parsed.how);
+  };
+  $('loadBinBtn').onclick = () => $('binFile').click();
+  $('binFile').onchange = async () => {
+    const f = $('binFile').files[0]; if (!f) return;
+    const data = new Uint8Array(await f.arrayBuffer());
+    const buf = new Uint8Array(TAG_BYTES); buf.set(data.slice(0, TAG_BYTES));
+    loadFromBuffer(buf, f.name);
+    $('binFile').value = '';
+  };
+
+  $('savePreset').onclick = () => {
+    const name = $('presetName').value.trim();
+    if (!name) { toast('Enter a preset name'); return; }
+    const p = loadPresets(); p[name] = readForm(); storePresets(p);
+    refreshPresetList(name); toast('Preset saved');
+  };
+  $('presetList').onchange = () => {
+    const name = $('presetList').value; if (!name) return;
+    const p = loadPresets()[name]; if (!p) return;
+    $('presetName').value = name;
+    writeForm(p);
+  };
+  $('deletePreset').onclick = () => {
+    const name = $('presetList').value; if (!name) return;
+    if (!confirm(`Delete preset "${name}"?`)) return;
+    const p = loadPresets(); delete p[name]; storePresets(p); refreshPresetList();
+  };
+  $('exportPresets').onclick = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(loadPresets(), null, 2)], { type: 'application/json' }));
+    a.download = 'elegoo-nfc-presets.json'; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  $('importPresetsBtn').onclick = () => $('importPresetsFile').click();
+  $('importPresetsFile').onchange = async () => {
+    const f = $('importPresetsFile').files[0]; if (!f) return;
+    try {
+      const incoming = JSON.parse(await f.text());
+      storePresets({ ...loadPresets(), ...incoming });
+      refreshPresetList(); toast(`Imported ${Object.keys(incoming).length} preset(s)`);
+    } catch { toast('Invalid JSON'); }
+    $('importPresetsFile').value = '';
+  };
+
+  let searchTimer;
+  $('dbSearch').addEventListener('focus', () => loadDb().catch(() => {}), { once: true });
+  $('dbSearch').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(runSearch, 150); });
+  $('dbResults').addEventListener('click', (e) => {
+    const row = e.target.closest('.result'); if (!row) return;
+    applyFilament(dbMatches[Number(row.dataset.i)]);
+  });
+
+  refreshPresetList();
+  render();
+}
+
+init();
+</script>
+</body>
+</html>
